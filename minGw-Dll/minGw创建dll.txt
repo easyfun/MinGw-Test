@@ -1,0 +1,171 @@
+在MINGW下创建DLL  
+
+2008-11-11 11:11:28|  分类： 编程积累 |举报|字号 订阅
+在许多情况下使用DLL是一个糟糕的主意，但对于新手来说学会如何创建DLL，尤其是一个免费的开发环境例如MinGW将意味着对开发工具的快速熟悉并能了解那些看起来隐含的选项。
+
+ 
+
+在继续下面的内容之前，你应该已经安装并且配置好了MinGW。同样你应该对缺少IDE环境的编程比较熟悉，或者知道如何在IDE环境下使用MinGW。这里就不再对此进行详细说明了。
+
+ 
+
+什么是DLL
+
+什么是DLL呢？DLL全称dynamically linked libraries (动态连接库)。它和静态连接库有什么区别呢？在静态连接库中，连接是在编译时完成的，库函数代码被添加到了主程序中。而在运行时完成连接的就叫动态连接。因为连接是在运行时完成的，显然操作系统将为此做一些幕后工作。这也是为什么大多数DLL不可移植的原因。
+
+ 
+
+当一个引用了DLL的可执行文件被加载，操作系统查找所有包含”imports”的连接，也就是查找使用了DLL功能的地方。然后操作系统去查找具体的DLL，如果在DLL中找到和这个”imports”匹配的”exports”，操作系统会对此做一个映射。这样可执行文件调用一个”imports”函数，DLL中的代码将会执行。哇，这就是动态连接。
+
+ 
+
+Hello DLL
+
+下面我将描述一个”hello world”的实现。代码由三个文件组成：hello.c、dll.h和dll.c。
+
+代码如下：
+
+hello.c
+
+#include <stdio.h>
+
+#include <dll.h>
+
+int main()
+
+{
+
+   hello();
+
+   return 0;
+
+}
+
+除了hello()函数使用动态连接外，hello.c是一个标准的hello world C程序。唯一特别的地方就是它包含了一个dll.h文件。
+
+ 
+
+dll.h
+
+#ifdef BUILD_DLL
+
+/* DLL export */
+
+#define EXPORT __declspec(dllexport)
+
+#else
+
+/* EXE import */
+
+#define EXPORT __declspec(dllimport)
+
+#endif
+
+ 
+
+EXPORT void hello(void);
+
+Dll.h有一些技巧性的东西在里面。它检查这个BUILD_DLL宏。当我们编译时将手动设置BUILD_DLL宏，这时候宏EXPORT被设置成__declspec(dllexport)。这样GCC就能编译这个DLL。当从可执行文件中调用DLL时，BUILD_DLL宏没有被设置，EXPORT宏被设置成__declspec(dllimport), 它将使函数在调用范围内可见。
+
+ 
+
+__declspec(dllexport)和__declspec(dllimport)是用来创建DLL的宏。
+
+ 
+
+dll.c
+
+#include "dll.h"
+
+EXPORT void hello(void)
+
+{    
+
+printf ("Hello\n");
+
+}
+
+这是hello world 实际实现代码，这里没有什么特别的。
+
+ 
+
+编译连接程序
+
+1、  编译hello.c
+
+  gcc -c hello.c
+
+2、  编译dll.c
+
+  gcc -c -DBUILD_DLL dll.c
+
+  注意要使用要使用-DBUILD_DLL来设置宏BUILD_DLL
+
+3、  创建dll
+
+gcc -shared -o message.dll dll.o -Wl,--out-implib,libmessage.a
+
+这一步要详细说明一下
+
+-shared参数用来创建共享库，在windows中为dll
+
+-Wl 等待下一条信息进行连接
+
+--out-implib是给连接程序ld使用的，用于创建要连接dll需要的import library
+
+4、  创建可执行文件
+
+gcc -o hello.exe hello.o -L./ -lmessage
+
+-L 指定连接库路径
+
+-lmessage (or -l message) 指定dll的import library
+
+ 
+
+好了，编译连接完成，运行程序
+
+C:\>hello
+
+Hello!
+
+ 
+
+ 
+
+ 
+
+ 
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+Assume   we   have   a   testdll.h,   testdll.c,   and   testmain.c.   In   the   first   case,   we   will   compile   testdll.c   with   MinGW,   and   let   the   MSVC-compiled   testmain   call   it.   You   should   use   
+    
+  gcc   -shared   -o   testdll.dll   testdll.c   \   
+          -Wl,--output-def,testdll.def,--out-implib,libtestdll.a     
+  to   produce   the   DLL   and   DEF   files.   MSVC   cannot   use   the   MinGW   library,   but   since   you   have   already   the   DEF   file   you   may   easily   produce   one   by   the   Microsoft   LIB   tool:     
+    
+  lib   /machine:i386   /def:testdll.def     
+  Once   you   have   testdll.lib,   it   is   trivial   to   produce   the   executable   with   MSVC:   
+    
+  cl   testmain.c   testdll.lib     
+  Now   for   MinGW   programs   calling   an   MSVC   DLL.   We   have   two   methods.   One   way   is   to   specify   the   LIB   files   directly   on   the   command   line   after   the   main   program.   For   example,   after   
+    
+  cl   /LD   testdll.c     
+  use     
+    
+  gcc   -o   testmain   testmain.c   testdll.lib     
+  The   other   way   is   to   produce   the   .a   files   for   GCC.   For   __cdecl   functions   (in   most   cases),   it   is   simple:   you   only   need   to   apply   the   reimp   tool   from   Anders   Norlander   (since   his   web   site   is   no   longer   available,   you   may   choose   to   download   here   a   version   enhanced   by   Jose   Fonseca):   
+    
+  reimp   testdll.lib   
+  gcc   -o   testmain   testmain.c   -L.   -ltestdll     
+  However,   for   __stdcall   functions,   the   above   method   does   not   work.   For   MSVC   will   prefix   an   underscore   to   __stdcall   functions   while   MinGW   will   not.   The   right   way   is   to   produce   the   DEF   file   using   the   pexports   tool   included   in   the   mingw-utils   package   and   filter   off   the   first   underscore   by   sed:   
+    
+  pexports   testdll.dll   |   sed   "s/^_//"   >   testdll.def     
+  Then,   when   using   dlltool   to   produce   the   import   library,   add   `-U'   to   the   command   line:     
+    
+  dlltool   -U   -d   testdll.def   -l   libtestdll.a     
+  And   now,   you   can   proceed   in   the   usual   way:     
+    
+  gcc   -o   testmain   testmain.c   -L.   -ltestdll     
+  Hooray,   we   got   it.     
